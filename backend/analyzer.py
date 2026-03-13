@@ -22,11 +22,39 @@ from sympy.core.numbers import Float, Integer, Rational
 from sympy.calculus.util import continuous_domain
 from sympy.sets import Interval, Union, FiniteSet
 import re
+import multiprocessing as mp
 
 from backend.models import Analyse, CritischPunt
 
 
 x = Symbol("x", real=True)
+SOLVE_TIMEOUT = 1.0  # seconden
+
+
+def _solve_worker(expr_str, queue):
+    """Worker functie voor multiprocessing solve."""
+    x = Symbol("x", real=True)
+    expr = sympify(expr_str, locals={"x": x})
+    result = solve(expr, x)
+    queue.put(result)
+
+
+def _solve_met_timeout(expr, var, timeout: float = SOLVE_TIMEOUT) -> list:
+    """Wrapper rond solve() met echte timeout via multiprocessing."""
+    queue = mp.Queue()
+    expr_str = str(expr)
+    proc = mp.Process(target=_solve_worker, args=(expr_str, queue))
+    proc.start()
+    proc.join(timeout=timeout)
+
+    if proc.is_alive():
+        proc.terminate()
+        proc.join()
+        return []
+
+    if not queue.empty():
+        return queue.get()
+    return []
 
 # Toegestane functies voor veilige parsing
 TOEGESTANE_FUNCTIES = {
@@ -145,7 +173,7 @@ def analyseer(expr_str: str, x_bereik: tuple[float, float] | None = None) -> Ana
     stappen.append("Stap 3: Nulpunten vinden (f(x) = 0)")
 
     try:
-        nulpunten_sym = solve(f, x)
+        nulpunten_sym = _solve_met_timeout(f, x)
         nulpunten = _filter_reeel(nulpunten_sym)
     except Exception:
         nulpunten = []
@@ -154,14 +182,14 @@ def analyseer(expr_str: str, x_bereik: tuple[float, float] | None = None) -> Ana
         nulpunten_str = ", ".join([f"x = {n}" for n in nulpunten])
         stappen.append(f"  Oplossingen: {nulpunten_str}")
     else:
-        stappen.append("  Geen reële nulpunten gevonden")
+        stappen.append("  Geen reële nulpunten gevonden (of timeout)")
 
     # Stap 4: Vind kritieke punten (f' = 0)
     stappen.append("")
     stappen.append("Stap 4: Kritieke punten vinden (f'(x) = 0)")
 
     try:
-        kritieke_sym = solve(f1, x)
+        kritieke_sym = _solve_met_timeout(f1, x)
         kritieke_x = _filter_reeel(kritieke_sym)
     except Exception:
         kritieke_x = []
@@ -170,7 +198,7 @@ def analyseer(expr_str: str, x_bereik: tuple[float, float] | None = None) -> Ana
         kritieke_str = ", ".join([f"x = {k}" for k in kritieke_x])
         stappen.append(f"  Oplossingen: {kritieke_str}")
     else:
-        stappen.append("  Geen kritieke punten gevonden")
+        stappen.append("  Geen kritieke punten gevonden (of timeout)")
 
     # Stap 5: Classificeer extrema met tweede afgeleide test
     stappen.append("")
@@ -225,7 +253,7 @@ def analyseer(expr_str: str, x_bereik: tuple[float, float] | None = None) -> Ana
     stappen.append("Stap 6: Buigpunten vinden (f''(x) = 0)")
 
     try:
-        buig_sym = solve(f2, x)
+        buig_sym = _solve_met_timeout(f2, x)
         buig_x = _filter_reeel(buig_sym)
     except Exception:
         buig_x = []
