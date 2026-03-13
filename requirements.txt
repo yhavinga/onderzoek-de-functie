@@ -1,0 +1,6 @@
+fastapi>=0.100
+uvicorn[standard]
+sympy
+numpy
+scipy
+matplotlib
