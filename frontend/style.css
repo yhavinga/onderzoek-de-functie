@@ -325,14 +325,16 @@ button:disabled {
 }
 
 #stappen {
-    font-family: "Monaco", "Consolas", monospace;
-    font-size: 0.9rem;
-    line-height: 1.8;
-    white-space: pre-wrap;
+    font-size: 0.95rem;
+    line-height: 2;
     background: var(--bg);
     padding: 1rem;
     border-radius: var(--radius);
     overflow-x: auto;
+}
+
+#stappen .katex {
+    font-size: 1em;
 }
 
 /* Footer */

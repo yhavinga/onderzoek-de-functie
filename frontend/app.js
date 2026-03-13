@@ -121,19 +121,56 @@ function toonResultaat(data) {
         buigpuntenDiv.innerHTML = '<p class="muted">Geen buigpunten gevonden</p>';
     }
 
-    // Stappen
-    document.getElementById('stappen').textContent = stappen.join('\n');
+    // Stappen (met LaTeX rendering)
+    const stappenHtml = stappen
+        .map(stap => wrapLatexInStap(stap))
+        .join('<br>');
+    document.getElementById('stappen').innerHTML = stappenHtml;
 
     // Toon resultaat sectie
     document.getElementById('resultaat').classList.remove('hidden');
 
-    // Render KaTeX
-    renderMathInElement(document.getElementById('afgeleiden'), {
-        delimiters: [
-            { left: '$$', right: '$$', display: true },
-            { left: '$', right: '$', display: false },
-        ],
-    });
+    // Render KaTeX in afgeleiden en stappen
+    if (typeof renderMathInElement === 'function') {
+        const katexOptions = {
+            delimiters: [
+                { left: '$$', right: '$$', display: true },
+                { left: '$', right: '$', display: false },
+            ],
+            throwOnError: false,
+        };
+        renderMathInElement(document.getElementById('afgeleiden'), katexOptions);
+        renderMathInElement(document.getElementById('stappen'), katexOptions);
+    } else {
+        console.error('KaTeX renderMathInElement not loaded');
+    }
+}
+
+/**
+ * Wrap LaTeX expressies in een stap met $ delimiters.
+ */
+function wrapLatexInStap(stap) {
+    // Bewaar leading spaces als &nbsp;
+    const leadingSpaces = stap.match(/^(\s*)/)[1];
+    const indent = leadingSpaces.replace(/ /g, '&nbsp;');
+    stap = stap.trimStart();
+
+    // Escape HTML
+    stap = stap.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // Detecteer "f'(x) = ..." of "f''(x) = ..." patronen en wrap de LaTeX
+    stap = stap.replace(
+        /(f['′]{1,3}\(x\)\s*=\s*)(.+)$/,
+        (match, prefix, latex) => `${prefix}$${latex}$`
+    );
+
+    // Detecteer "LaTeX: f(x) = ..." patroon
+    stap = stap.replace(
+        /(LaTeX:\s*f\(x\)\s*=\s*)(.+)$/,
+        (match, prefix, latex) => `${prefix}$${latex}$`
+    );
+
+    return indent + stap;
 }
 
 /**
