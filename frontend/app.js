@@ -3,7 +3,7 @@
  * Vanilla JavaScript, geen frameworks
  */
 
-const API_URL = '/api/analyseer';
+const API_URL = 'api/analyseer';
 
 /**
  * Start de analyse van de ingevoerde functie.
