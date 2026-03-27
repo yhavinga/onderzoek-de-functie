@@ -17,10 +17,12 @@ from sympy import (
     sqrt,
     pi,
     E,
+    Function,
 )
 from sympy.core.numbers import Float, Integer, Rational
 from sympy.calculus.util import continuous_domain
 from sympy.sets import Interval, Union, FiniteSet
+from sympy.printing.latex import LatexPrinter
 import re
 import multiprocessing as mp
 
@@ -29,6 +31,77 @@ from backend.models import Analyse, CritischPunt
 
 x = Symbol("x", real=True)
 SOLVE_TIMEOUT = 1.0  # seconden
+
+
+# Nederlandse/Europese/ISO notatie: ln = base e, log = base 10
+class ln(Function):
+    """Natuurlijke logaritme (base e) - Nederlandse notatie."""
+
+    @classmethod
+    def eval(cls, arg):
+        return log(arg)
+
+
+class log10(Function):
+    """Logaritme base 10 - voor interne representatie."""
+
+    @classmethod
+    def eval(cls, arg):
+        return log(arg) / log(10)
+
+
+class DutchLatexPrinter(LatexPrinter):
+    """LaTeX printer met Nederlandse/ISO notatie voor logaritmes."""
+
+    def _print_log(self, expr):
+        # SymPy's log is natural log, output as \ln
+        if len(expr.args) == 1:
+            return r"\ln\left(%s\right)" % self._print(expr.args[0])
+        else:
+            # log with base: log(x, base)
+            base = expr.args[1]
+            if base == 10:
+                return r"\log\left(%s\right)" % self._print(expr.args[0])
+            return r"\log_{%s}\left(%s\right)" % (
+                self._print(base),
+                self._print(expr.args[0]),
+            )
+
+    def _print_Mul(self, expr):
+        # Check for log(x)/log(10) pattern which is log base 10
+        from sympy import Mul, Pow, Integer
+        numer, denom = expr.as_numer_denom()
+        if (
+            denom.func == log
+            and len(denom.args) == 1
+            and denom.args[0] == 10
+            and numer.func == log
+            and len(numer.args) == 1
+        ):
+            return r"\log\left(%s\right)" % self._print(numer.args[0])
+        # Check for 1/(x*log(10)) pattern which is derivative of log base 10
+        if (
+            expr.is_Mul
+            and any(
+                isinstance(arg, Pow) and arg.exp == -1 and arg.base.func == log and arg.base.args[0] == 10
+                for arg in expr.args
+                if isinstance(arg, Pow)
+            )
+        ):
+            # Rewrite as 1/(x * ln(10)) pattern
+            new_args = []
+            for arg in expr.args:
+                if isinstance(arg, Pow) and arg.exp == -1 and arg.base.func == log and arg.base.args[0] == 10:
+                    new_args.append(Pow(log(10), -1))
+                else:
+                    new_args.append(arg)
+            return super()._print_Mul(Mul(*new_args))
+        return super()._print_Mul(expr)
+
+
+def dutch_latex(expr):
+    """Generate LaTeX met Nederlandse/ISO notatie."""
+    return DutchLatexPrinter().doprint(expr)
 
 
 def _solve_worker(expr_str, queue):
@@ -57,12 +130,13 @@ def _solve_met_timeout(expr, var, timeout: float = SOLVE_TIMEOUT) -> list:
     return []
 
 # Toegestane functies voor veilige parsing
+# Nederlandse/ISO notatie: ln = natural log (base e), log = log base 10
 TOEGESTANE_FUNCTIES = {
     "sin": sin,
     "cos": cos,
     "tan": tan,
-    "log": log,
-    "ln": log,
+    "ln": log,  # ln(x) -> natural log
+    "log": lambda arg: log(arg, 10),  # log(x) -> log base 10
     "exp": exp,
     "sqrt": sqrt,
     "abs": Abs,
@@ -147,7 +221,7 @@ def analyseer(expr_str: str, x_bereik: tuple[float, float] | None = None) -> Ana
     except Exception as e:
         raise ValueError(f"Ongeldige functie: {e}")
 
-    f_latex = latex(f)
+    f_latex = dutch_latex(f)
     stappen.append(f"  LaTeX: f(x) = {f_latex}")
 
     # Stap 2: Bereken afgeleiden
@@ -159,14 +233,14 @@ def analyseer(expr_str: str, x_bereik: tuple[float, float] | None = None) -> Ana
     f3 = diff(f2, x)
 
     afgeleiden = {
-        "f'": latex(f1),
-        "f''": latex(f2),
-        "f'''": latex(f3),
+        "f'": dutch_latex(f1),
+        "f''": dutch_latex(f2),
+        "f'''": dutch_latex(f3),
     }
 
-    stappen.append(f"  f'(x) = {latex(f1)}")
-    stappen.append(f"  f''(x) = {latex(f2)}")
-    stappen.append(f"  f'''(x) = {latex(f3)}")
+    stappen.append(f"  f'(x) = {dutch_latex(f1)}")
+    stappen.append(f"  f''(x) = {dutch_latex(f2)}")
+    stappen.append(f"  f'''(x) = {dutch_latex(f3)}")
 
     # Stap 3: Vind nulpunten (f = 0)
     stappen.append("")
